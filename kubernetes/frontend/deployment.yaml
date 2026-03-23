@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ecommerce-frontend
+  namespace: ecommerce
+  labels:
+    app: ecommerce-frontend
+    component: frontend
+    version: "v1.0"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ecommerce-frontend
+
+  # Rolling update — no blue/green complexity
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+
+  template:
+    metadata:
+      labels:
+        app: ecommerce-frontend
+        component: frontend
+
+    spec:
+      serviceAccountName: ecommerce-sa
+      automountServiceAccountToken: false
+
+      # ── Pod Security Context ──────────────────────────────────────────────────
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101        # nginxuser UID from Dockerfile
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: ecommerce-frontend
+          # IMAGE_PLACEHOLDER — Jenkins replaces this via sed
+          image: sandesh300/ecommerce-frontend:v1.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+              protocol: TCP
+
+          # ── Container Security Context ────────────────────────────────────────
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false   # Nginx writes temp/cache files
+            runAsNonRoot: true
+            runAsUser: 101
+            capabilities:
+              drop:
+                - ALL
+
+          # ── Resource Limits ───────────────────────────────────────────────────
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+
+          # ── Probes ────────────────────────────────────────────────────────────
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+      restartPolicy: Always
