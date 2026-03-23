@@ -8,7 +8,7 @@ pipeline {
   environment {
     SONAR_HOME      = tool 'Sonar'
     DOCKER_REGISTRY = 'docker.io'
-    DOCKER_HUB_USER = 'sandesh300'
+    DOCKER_HUB_USER = 'sandesh030'
 
     BACKEND_IMAGE  = 'ecommerce-backend'
     FRONTEND_IMAGE = 'ecommerce-frontend'
