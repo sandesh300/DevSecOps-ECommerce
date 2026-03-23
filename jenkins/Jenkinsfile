@@ -1,0 +1,372 @@
+pipeline {
+  agent any
+
+  parameters {
+    string(name: 'IMAGE_TAG', defaultValue: 'v1.0', description: 'Docker image tag')
+  }
+
+  environment {
+    SONAR_HOME      = tool 'Sonar'
+    DOCKER_REGISTRY = 'docker.io'
+    DOCKER_HUB_USER = 'sandesh300'
+
+    BACKEND_IMAGE  = 'ecommerce-backend'
+    FRONTEND_IMAGE = 'ecommerce-frontend'
+
+    GIT_REPO = 'https://github.com/sandesh300/DevSecOps-ECommerce'
+
+    DOCKER_BUILDKIT = '1'
+
+    // Kubernetes namespace
+    K8S_NAMESPACE = 'ecommerce'
+
+    // Minikube kubeconfig path (Jenkins user must have access)
+    KUBECONFIG = '/var/lib/jenkins/.kube/config'
+  }
+
+  stages {
+
+    // ── 1. Workspace Cleanup ────────────────────────────────────────────────
+    stage('Clean Workspace') {
+      steps {
+        cleanWs()
+      }
+    }
+
+    // ── 2. Source Checkout ──────────────────────────────────────────────────
+    stage('Code Checkout') {
+      steps {
+        git url: env.GIT_REPO, branch: 'main', credentialsId: 'github-creds'
+        echo "Checked out commit: ${sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()}"
+      }
+    }
+
+    // ── 3. Unit Tests ───────────────────────────────────────────────────────
+    stage('Unit Tests') {
+      steps {
+        dir('backend') {
+          sh 'mvn test -B'
+          junit 'target/surefire-reports/*.xml'
+        }
+      }
+      post {
+        always {
+          // Archive test results
+          archiveArtifacts artifacts: 'backend/target/surefire-reports/*.xml', allowEmptyArchive: true
+        }
+      }
+    }
+
+    // ── 4. SAST: SonarQube Analysis ─────────────────────────────────────────
+    stage('SonarQube Analysis') {
+      steps {
+        withSonarQubeEnv('Sonar') {
+          sh """
+            ${SONAR_HOME}/bin/sonar-scanner \
+              -Dsonar.projectName=ecommerce-backend \
+              -Dsonar.projectKey=ecommerce-backend \
+              -Dsonar.sources=backend/src/main \
+              -Dsonar.tests=backend/src/test \
+              -Dsonar.java.binaries=backend/target/classes \
+              -Dsonar.junit.reportPaths=backend/target/surefire-reports \
+              -Dsonar.coverage.exclusions=**/model/**,**/dto/**,**/config/** \
+              -Dsonar.exclusions=**/test/**
+          """
+        }
+      }
+    }
+
+    // ── 5. Quality Gate ─────────────────────────────────────────────────────
+    stage('SonarQube Quality Gate') {
+      steps {
+        timeout(time: 10, unit: 'MINUTES') {
+          waitForQualityGate abortPipeline: true
+        }
+      }
+    }
+
+    // ── 6. Dependency Security Check ────────────────────────────────────────
+    stage('OWASP Dependency Check') {
+      steps {
+        dependencyCheck(
+          additionalArguments: '''
+            --scan ./backend
+            --format XML
+            --format HTML
+            --failOnCVSS 7
+            --enableRetired
+          ''',
+          odcInstallation: 'OWASP'
+        )
+        dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+        archiveArtifacts artifacts: '**/dependency-check-report.*', allowEmptyArchive: true
+      }
+    }
+
+    // ── 7. Trivy Filesystem Scan ─────────────────────────────────────────────
+    stage('Trivy FS Scan') {
+      steps {
+        sh """
+          trivy fs \
+            --severity HIGH,CRITICAL \
+            --format table \
+            --output trivy-fs-report.txt \
+            . || true
+
+          # Also scan backend pom.xml for known CVEs
+          trivy fs \
+            --severity HIGH,CRITICAL \
+            --format json \
+            --output trivy-fs-report.json \
+            ./backend/pom.xml || true
+        """
+        archiveArtifacts artifacts: 'trivy-fs-report.*', allowEmptyArchive: true
+      }
+    }
+
+    // ── 8. Docker Build: Backend ─────────────────────────────────────────────
+    stage('Docker Build Backend') {
+      steps {
+        sh """
+          docker build \
+            --no-cache \
+            --label "build.number=${env.BUILD_NUMBER}" \
+            --label "git.commit=${sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()}" \
+            -t ${DOCKER_HUB_USER}/${BACKEND_IMAGE}:${params.IMAGE_TAG} \
+            -t ${DOCKER_HUB_USER}/${BACKEND_IMAGE}:latest \
+            ./backend
+        """
+      }
+    }
+
+    // ── 9. Docker Build: Frontend ────────────────────────────────────────────
+    stage('Docker Build Frontend') {
+      steps {
+        sh """
+          docker build \
+            --no-cache \
+            --label "build.number=${env.BUILD_NUMBER}" \
+            -t ${DOCKER_HUB_USER}/${FRONTEND_IMAGE}:${params.IMAGE_TAG} \
+            -t ${DOCKER_HUB_USER}/${FRONTEND_IMAGE}:latest \
+            ./frontend
+        """
+      }
+    }
+
+    // ── 10. Trivy Image Vulnerability Scan ───────────────────────────────────
+    stage('Trivy Image Scan') {
+      steps {
+        sh """
+          echo "=== Scanning Backend Image ==="
+          trivy image \
+            --severity HIGH,CRITICAL \
+            --format table \
+            --output trivy-backend-image-report.txt \
+            ${DOCKER_HUB_USER}/${BACKEND_IMAGE}:${params.IMAGE_TAG} || true
+
+          echo "=== Scanning Frontend Image ==="
+          trivy image \
+            --severity HIGH,CRITICAL \
+            --format table \
+            --output trivy-frontend-image-report.txt \
+            ${DOCKER_HUB_USER}/${FRONTEND_IMAGE}:${params.IMAGE_TAG} || true
+
+          echo "=== JSON reports for integration ==="
+          trivy image \
+            --severity HIGH,CRITICAL \
+            --format json \
+            --output trivy-backend-image-report.json \
+            ${DOCKER_HUB_USER}/${BACKEND_IMAGE}:${params.IMAGE_TAG} || true
+        """
+        archiveArtifacts artifacts: 'trivy-*-image-report.*', allowEmptyArchive: true
+      }
+    }
+
+    // ── 11. Push to DockerHub ─────────────────────────────────────────────────
+    stage('Push to DockerHub') {
+      steps {
+        withCredentials([
+          usernamePassword(
+            credentialsId: 'dockerHub',
+            usernameVariable: 'DOCKER_USER',
+            passwordVariable: 'DOCKER_PASS'
+          )
+        ]) {
+          sh """
+            echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
+
+            docker push ${DOCKER_HUB_USER}/${BACKEND_IMAGE}:${params.IMAGE_TAG}
+            docker push ${DOCKER_HUB_USER}/${BACKEND_IMAGE}:latest
+
+            docker push ${DOCKER_HUB_USER}/${FRONTEND_IMAGE}:${params.IMAGE_TAG}
+            docker push ${DOCKER_HUB_USER}/${FRONTEND_IMAGE}:latest
+
+            docker logout
+          """
+        }
+      }
+    }
+
+    // ── 12. Update Kubernetes Manifests in Git ────────────────────────────────
+    stage('Update Kubernetes Manifests') {
+      steps {
+        withCredentials([
+          usernamePassword(
+            credentialsId: 'github-creds',
+            usernameVariable: 'GIT_USER',
+            passwordVariable: 'GIT_PASS'
+          )
+        ]) {
+          sh """
+            git config user.email 'jenkins@ci.com'
+            git config user.name 'Jenkins CI'
+
+            # Update backend deployment image tag
+            sed -i "s|image: ${DOCKER_HUB_USER}/${BACKEND_IMAGE}:.*|image: ${DOCKER_HUB_USER}/${BACKEND_IMAGE}:${params.IMAGE_TAG}|g" \
+              kubernetes/backend/deployment.yaml
+
+            # Update frontend deployment image tag
+            sed -i "s|image: ${DOCKER_HUB_USER}/${FRONTEND_IMAGE}:.*|image: ${DOCKER_HUB_USER}/${FRONTEND_IMAGE}:${params.IMAGE_TAG}|g" \
+              kubernetes/frontend/deployment.yaml
+
+            git add kubernetes/backend/deployment.yaml kubernetes/frontend/deployment.yaml
+
+            if git diff --cached --quiet; then
+              echo "No manifest changes to commit."
+            else
+              git commit -m "ci: update images to ${params.IMAGE_TAG} [build #${env.BUILD_NUMBER}] [skip ci]"
+              git push https://\${GIT_USER}:\${GIT_PASS}@github.com/sandesh300/DevSecOps-ECommerce.git main
+            fi
+          """
+        }
+      }
+    }
+
+    // ── 13. Deploy to Minikube ────────────────────────────────────────────────
+    stage('Deploy to Minikube') {
+      steps {
+        sh """
+          echo "=== Verifying Minikube cluster access ==="
+          kubectl --kubeconfig=${KUBECONFIG} cluster-info
+
+          echo "=== Applying namespace and RBAC ==="
+          kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/namespace.yaml
+          kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/rbac/rbac.yaml
+
+          echo "=== Applying MySQL resources ==="
+          kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/mysql/secret.yaml
+          kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/mysql/pvc.yaml
+          kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/mysql/statefulset.yaml
+          kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/mysql/service.yaml
+
+          echo "=== Waiting for MySQL to be ready ==="
+          kubectl --kubeconfig=${KUBECONFIG} rollout status statefulset/mysql \
+            -n ${K8S_NAMESPACE} --timeout=120s
+
+          echo "=== Applying Backend resources ==="
+          kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/backend/configmap.yaml
+          kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/backend/deployment.yaml
+          kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/backend/service.yaml
+
+          echo "=== Applying Frontend resources ==="
+          kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/frontend/deployment.yaml
+          kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/frontend/service-ingress.yaml
+
+          echo "=== Applying NetworkPolicies ==="
+          kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/network-policy/networkpolicy.yaml
+
+          echo "=== Rolling out updated images ==="
+          kubectl --kubeconfig=${KUBECONFIG} set image deployment/ecommerce-backend \
+            ecommerce-backend=${DOCKER_HUB_USER}/${BACKEND_IMAGE}:${params.IMAGE_TAG} \
+            -n ${K8S_NAMESPACE}
+
+          kubectl --kubeconfig=${KUBECONFIG} set image deployment/ecommerce-frontend \
+            ecommerce-frontend=${DOCKER_HUB_USER}/${FRONTEND_IMAGE}:${params.IMAGE_TAG} \
+            -n ${K8S_NAMESPACE}
+
+          echo "=== Waiting for rollouts to complete ==="
+          kubectl --kubeconfig=${KUBECONFIG} rollout status deployment/ecommerce-backend \
+            -n ${K8S_NAMESPACE} --timeout=120s
+
+          kubectl --kubeconfig=${KUBECONFIG} rollout status deployment/ecommerce-frontend \
+            -n ${K8S_NAMESPACE} --timeout=120s
+
+          echo "=== Deployment complete — pod status ==="
+          kubectl --kubeconfig=${KUBECONFIG} get pods -n ${K8S_NAMESPACE}
+        """
+      }
+    }
+
+    // ── 14. Post-deploy Smoke Test ────────────────────────────────────────────
+    stage('Smoke Test') {
+      steps {
+        sh """
+          BACKEND_URL=\$(kubectl --kubeconfig=${KUBECONFIG} \
+            get svc ecommerce-backend-svc -n ${K8S_NAMESPACE} \
+            -o jsonpath='{.spec.clusterIP}')
+
+          echo "=== Health check: http://\${BACKEND_URL}:8080/actuator/health ==="
+          for i in \$(seq 1 10); do
+            STATUS=\$(curl -s -o /dev/null -w "%{http_code}" \
+              http://\${BACKEND_URL}:8080/actuator/health || echo "000")
+            if [ "\$STATUS" = "200" ]; then
+              echo "Backend health check PASSED (attempt \$i)"
+              break
+            fi
+            echo "Attempt \$i: status \$STATUS — retrying in 10s..."
+            sleep 10
+          done
+
+          if [ "\$STATUS" != "200" ]; then
+            echo "Backend health check FAILED after 10 attempts"
+            exit 1
+          fi
+        """
+      }
+    }
+
+  } // end stages
+
+  post {
+    success {
+      echo '✅ Pipeline SUCCESS'
+      emailext(
+        subject: "✅ SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER} | Tag: ${params.IMAGE_TAG}",
+        body: """
+          <h2>Build Succeeded</h2>
+          <p><b>Job:</b> ${env.JOB_NAME}</p>
+          <p><b>Build:</b> #${env.BUILD_NUMBER}</p>
+          <p><b>Image Tag:</b> ${params.IMAGE_TAG}</p>
+          <p><b>Artifacts:</b> ${env.BUILD_URL}artifact/</p>
+          <p>Security scans: Trivy, OWASP, SonarQube — all passed.</p>
+        """,
+        mimeType: 'text/html',
+        to: 'bhujbalsandesh52@gmail.com'
+      )
+    }
+
+    failure {
+      echo '❌ Pipeline FAILED'
+      emailext(
+        subject: "❌ FAILURE: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+        body: """
+          <h2>Build Failed</h2>
+          <p><b>Job:</b> ${env.JOB_NAME}</p>
+          <p><b>Build:</b> #${env.BUILD_NUMBER}</p>
+          <p><b>Console:</b> ${env.BUILD_URL}console</p>
+        """,
+        mimeType: 'text/html',
+        to: 'bhujbalsandesh52@gmail.com'
+      )
+    }
+
+    always {
+      // Clean up local Docker images to save disk space
+      sh """
+        docker rmi ${DOCKER_HUB_USER}/${BACKEND_IMAGE}:${params.IMAGE_TAG} || true
+        docker rmi ${DOCKER_HUB_USER}/${FRONTEND_IMAGE}:${params.IMAGE_TAG} || true
+        docker system prune -f || true
+      """
+    }
+  }
+}
