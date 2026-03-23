@@ -1,0 +1,35 @@
+# ClusterIP Service — MySQL is internal only, never exposed externally
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-svc
+  namespace: ecommerce
+  labels:
+    app: mysql
+    component: database
+spec:
+  type: ClusterIP
+  selector:
+    app: mysql
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: 3306
+      protocol: TCP
+
+---
+# Headless service for StatefulSet DNS
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-headless
+  namespace: ecommerce
+  labels:
+    app: mysql
+spec:
+  clusterIP: None
+  selector:
+    app: mysql
+  ports:
+    - port: 3306
+      targetPort: 3306

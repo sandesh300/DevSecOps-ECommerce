@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: ecommerce
+  labels:
+    app: mysql
+    component: database
+spec:
+  accessModes:
+    - ReadWriteOnce
+  # Minikube default StorageClass (standard) provisions hostPath volumes
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 5Gi

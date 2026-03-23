@@ -1,0 +1,140 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  namespace: ecommerce
+  labels:
+    app: mysql
+    component: database
+spec:
+  serviceName: mysql-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+        component: database
+    spec:
+      # ── Security Context (Pod Level) ─────────────────────────────────────────
+      securityContext:
+        runAsNonRoot: false   # MySQL requires root internally; container user is mysql (999)
+        fsGroup: 999
+      
+      serviceAccountName: ecommerce-sa
+      
+      containers:
+        - name: mysql
+          image: mysql:8.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3306
+              protocol: TCP
+
+          # ── Security Context (Container Level) ──────────────────────────────
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false   # MySQL writes to disk
+            runAsUser: 999
+            runAsGroup: 999
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - CHOWN
+                - DAC_OVERRIDE
+                - SETUID
+                - SETGID
+
+          # ── Environment from Secret ──────────────────────────────────────────
+          env:
+            - name: MYSQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: mysql-database
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: mysql-user
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: mysql-password
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: mysql-root-password
+
+          # ── Resource Limits ──────────────────────────────────────────────────
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+
+          # ── Volume Mounts ────────────────────────────────────────────────────
+          volumeMounts:
+            - name: mysql-storage
+              mountPath: /var/lib/mysql
+            - name: mysql-config
+              mountPath: /etc/mysql/conf.d
+
+          # ── Probes ───────────────────────────────────────────────────────────
+          readinessProbe:
+            exec:
+              command:
+                - bash
+                - -c
+                - "mysqladmin ping -h localhost -u root -p${MYSQL_ROOT_PASSWORD}"
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          livenessProbe:
+            exec:
+              command:
+                - bash
+                - -c
+                - "mysqladmin ping -h localhost -u root -p${MYSQL_ROOT_PASSWORD}"
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+
+      volumes:
+        - name: mysql-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+        - name: mysql-config
+          configMap:
+            name: mysql-config
+
+---
+# MySQL ConfigMap for hardened config
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config
+  namespace: ecommerce
+data:
+  custom.cnf: |
+    [mysqld]
+    # Security settings
+    skip-symbolic-links
+    local-infile=0
+    skip-show-database
+    # Performance
+    innodb_buffer_pool_size=256M
+    max_connections=100
+    # Logging
+    slow_query_log=1
+    long_query_time=2
