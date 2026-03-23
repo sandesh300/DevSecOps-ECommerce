@@ -1,0 +1,141 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Default Deny ALL ingress and egress in namespace
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: ecommerce
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Allow DNS resolution for all pods (required for service discovery)
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: ecommerce
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Backend: Allow ingress from frontend only on port 8080
+#          Allow egress to MySQL only on port 3306
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-netpol
+  namespace: ecommerce
+spec:
+  podSelector:
+    matchLabels:
+      app: ecommerce-backend
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Accept traffic from frontend pods
+    - from:
+        - podSelector:
+            matchLabels:
+              app: ecommerce-frontend
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Accept traffic from Prometheus scraping
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Accept traffic from ingress controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # Only allow outbound to MySQL
+    - to:
+        - podSelector:
+            matchLabels:
+              app: mysql
+      ports:
+        - protocol: TCP
+          port: 3306
+
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Frontend: Allow ingress from outside (NodePort/Ingress)
+#           Allow egress to backend only on 8080
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-netpol
+  namespace: ecommerce
+spec:
+  podSelector:
+    matchLabels:
+      app: ecommerce-frontend
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 80
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: ecommerce-backend
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# MySQL: Allow ingress ONLY from backend pods
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mysql-netpol
+  namespace: ecommerce
+spec:
+  podSelector:
+    matchLabels:
+      app: mysql
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: ecommerce-backend
+      ports:
+        - protocol: TCP
+          port: 3306
+  egress: []   # MySQL does not need to reach external services
