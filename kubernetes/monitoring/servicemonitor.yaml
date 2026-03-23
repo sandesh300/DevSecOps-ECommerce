@@ -1,0 +1,20 @@
+# ServiceMonitor — tells Prometheus to scrape Spring Boot actuator/prometheus
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ecommerce-backend-monitor
+  namespace: monitoring       # Must be in monitoring namespace
+  labels:
+    release: monitoring       # Must match Helm release name
+spec:
+  namespaceSelector:
+    matchNames:
+      - ecommerce
+  selector:
+    matchLabels:
+      app: ecommerce-backend
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: 30s
+      scrapeTimeout: 10s

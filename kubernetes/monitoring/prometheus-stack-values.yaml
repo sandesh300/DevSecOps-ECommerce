@@ -1,0 +1,116 @@
+# prometheus-stack-values.yaml
+# Used with: helm install monitoring prometheus-community/kube-prometheus-stack \
+#              -n monitoring --create-namespace -f prometheus-stack-values.yaml
+
+# ── Prometheus ──────────────────────────────────────────────────────────────
+prometheus:
+  prometheusSpec:
+    # Scrape all namespaces
+    serviceMonitorNamespaceSelector: {}
+    serviceMonitorSelector: {}
+    podMonitorSelector: {}
+
+    # Retention
+    retention: 7d
+    retentionSize: "2GB"
+
+    # Storage (Minikube)
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: standard
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+
+    # Resource limits for Minikube
+    resources:
+      requests:
+        cpu: 200m
+        memory: 400Mi
+      limits:
+        cpu: 500m
+        memory: 800Mi
+
+  # Expose via NodePort for Minikube access
+  service:
+    type: NodePort
+    nodePort: 30090
+
+# ── Grafana ─────────────────────────────────────────────────────────────────
+grafana:
+  enabled: true
+
+  # Change default password!
+  adminPassword: "GrafanaAdmin@123"
+
+  service:
+    type: NodePort
+    nodePort: 30300
+
+  # Pre-load ecommerce dashboard
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: "default"
+          orgId: 1
+          folder: ""
+          type: file
+          disableDeletion: false
+          options:
+            path: /var/lib/grafana/dashboards/default
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  persistence:
+    enabled: true
+    storageClassName: standard
+    size: 1Gi
+
+# ── AlertManager ────────────────────────────────────────────────────────────
+alertmanager:
+  enabled: true
+
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      group_by: ['alertname', 'namespace']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 1h
+      receiver: 'email-alerts'
+    receivers:
+      - name: 'email-alerts'
+        email_configs:
+          - to: 'bhujbalsandesh52@gmail.com'
+            from: 'alertmanager@ecommerce.local'
+            smarthost: 'smtp.gmail.com:587'
+            auth_username: 'bhujbalsandesh52@gmail.com'
+            auth_password: 'your-app-password-here'
+            send_resolved: true
+
+# ── Node Exporter ────────────────────────────────────────────────────────────
+nodeExporter:
+  enabled: true
+
+# ── Kube State Metrics ────────────────────────────────────────────────────────
+kubeStateMetrics:
+  enabled: true
