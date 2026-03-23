@@ -1,0 +1,108 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# ServiceAccount for ecommerce pods
+# Principle of Least Privilege — pods get only what they need
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ecommerce-sa
+  namespace: ecommerce
+  labels:
+    app: ecommerce
+automountServiceAccountToken: false   # Explicitly disabled; set true per pod if needed
+
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Role — scoped to ecommerce namespace only
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ecommerce-role
+  namespace: ecommerce
+  labels:
+    app: ecommerce
+rules:
+  # Allow reading ConfigMaps (for app config)
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  
+  # Allow reading Secrets (for DB credentials)
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+  
+  # Allow reading pod info (for health checks)
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+
+  # Allow reading own endpoints (for service discovery)
+  - apiGroups: [""]
+    resources: ["endpoints", "services"]
+    verbs: ["get", "list", "watch"]
+
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# RoleBinding — binds Role to ServiceAccount
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ecommerce-rolebinding
+  namespace: ecommerce
+  labels:
+    app: ecommerce
+subjects:
+  - kind: ServiceAccount
+    name: ecommerce-sa
+    namespace: ecommerce
+roleRef:
+  kind: Role
+  name: ecommerce-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Jenkins ServiceAccount — for Jenkins to deploy to Minikube
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jenkins-deploy-sa
+  namespace: ecommerce
+  labels:
+    app: jenkins
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: jenkins-deploy-role
+  namespace: ecommerce
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["services", "configmaps", "pods", "pods/log"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "create", "update", "patch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jenkins-deploy-rolebinding
+  namespace: ecommerce
+subjects:
+  - kind: ServiceAccount
+    name: jenkins-deploy-sa
+    namespace: ecommerce
+roleRef:
+  kind: Role
+  name: jenkins-deploy-role
+  apiGroup: rbac.authorization.k8s.io
