@@ -1,0 +1,93 @@
+# falco-custom-rules.yaml
+# Deploy with: helm install falco falcosecurity/falco \
+#   --set-file customRules."custom-rules\.yaml"=falco-custom-rules.yaml
+
+customRules:
+  custom-rules.yaml: |-
+    # ── Rule 1: Detect shell spawned inside container ──────────────────────────
+    - rule: Shell Spawned in Ecommerce Container
+      desc: Detect when a shell is spawned inside ecommerce app containers
+      condition: >
+        spawned_process and
+        container and
+        container.image.repository in (sandesh300/ecommerce-backend, sandesh300/ecommerce-frontend) and
+        proc.name in (bash, sh, zsh, dash, ksh)
+      output: >
+        Shell spawned in ecommerce container
+        (user=%user.name cmd=%proc.cmdline container=%container.name image=%container.image.repository)
+      priority: WARNING
+      tags: [ecommerce, shell, intrusion]
+
+    # ── Rule 2: Unexpected outbound network ───────────────────────────────────
+    - rule: Unexpected Outbound Connection from Backend
+      desc: Backend should only connect to MySQL (3306), not arbitrary hosts
+      condition: >
+        outbound and
+        container and
+        container.image.repository = sandesh300/ecommerce-backend and
+        not fd.sport in (3306, 8080, 53) and
+        not fd.sip.name in (mysql-svc, localhost)
+      output: >
+        Unexpected outbound connection from backend
+        (cmd=%proc.cmdline connection=%fd.name container=%container.name)
+      priority: ERROR
+      tags: [ecommerce, network, exfiltration]
+
+    # ── Rule 3: Sensitive file access ─────────────────────────────────────────
+    - rule: Sensitive File Read in Container
+      desc: Detect reading of sensitive files like /etc/passwd, /etc/shadow
+      condition: >
+        open_read and
+        container and
+        fd.name in (/etc/shadow, /etc/sudoers, /root/.ssh/id_rsa, /proc/self/environ) and
+        container.image.repository in (sandesh300/ecommerce-backend, sandesh300/ecommerce-frontend)
+      output: >
+        Sensitive file read in container
+        (file=%fd.name user=%user.name container=%container.name image=%container.image.repository)
+      priority: CRITICAL
+      tags: [ecommerce, sensitive-file, attack]
+
+    # ── Rule 4: Privilege escalation attempt ──────────────────────────────────
+    - rule: Privilege Escalation Attempt
+      desc: Detect setuid/setgid binary execution in ecommerce containers
+      condition: >
+        spawned_process and
+        container and
+        container.image.repository in (sandesh300/ecommerce-backend, sandesh300/ecommerce-frontend) and
+        proc.is_suid_binary = true
+      output: >
+        Privilege escalation via SUID binary
+        (binary=%proc.name user=%user.name container=%container.name)
+      priority: CRITICAL
+      tags: [ecommerce, privilege-escalation]
+
+    # ── Rule 5: Write to non-temp directory ───────────────────────────────────
+    - rule: Unexpected Write to Filesystem
+      desc: Detect writes to unexpected paths in frontend (nginx) container
+      condition: >
+        open_write and
+        container and
+        container.image.repository = sandesh300/ecommerce-frontend and
+        not fd.name startswith /tmp and
+        not fd.name startswith /var/cache/nginx and
+        not fd.name startswith /var/log/nginx and
+        not fd.name = /var/run/nginx.pid
+      output: >
+        Unexpected write in frontend container
+        (file=%fd.name user=%user.name container=%container.name)
+      priority: WARNING
+      tags: [ecommerce, filesystem, suspicious]
+
+    # ── Rule 6: Crypto mining detection ───────────────────────────────────────
+    - rule: Crypto Mining in Container
+      desc: Detect known crypto mining processes
+      condition: >
+        spawned_process and
+        container and
+        proc.name in (xmrig, minerd, cryptonight, ccminer, cpuminer) or
+        (spawned_process and container and proc.cmdline contains "stratum+tcp")
+      output: >
+        Possible crypto mining detected
+        (cmd=%proc.cmdline container=%container.name image=%container.image.repository)
+      priority: CRITICAL
+      tags: [ecommerce, cryptomining, malware]
