@@ -13,12 +13,11 @@ spec:
   ports:
     - name: http
       port: 80
-      targetPort: 80
+      targetPort: 8080    # FIX: nginx container now listens on 8080 (non-root port)
       nodePort: 30090
       protocol: TCP
 
 ---
-# Ingress — requires: minikube addons enable ingress
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -32,7 +31,6 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-body-size: "10m"
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "10"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
-    # Security headers via ingress
     nginx.ingress.kubernetes.io/configuration-snippet: |
       add_header X-Frame-Options "SAMEORIGIN";
       add_header X-Content-Type-Options "nosniff";
