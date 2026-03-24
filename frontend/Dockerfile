@@ -1,4 +1,6 @@
 # ── Stage 1: Build React App ────────────────────────────────────────────────
+# FIX v2: nginx.conf already listens on 8080; no sed needed.
+# FIX: pid file moved to /tmp so nginx can run as UID 101 (non-root).
 FROM node:20-alpine AS builder
 
 WORKDIR /app
@@ -15,23 +17,21 @@ FROM nginx:1.25-alpine AS runtime
 # Remove default nginx config
 RUN rm /etc/nginx/conf.d/default.conf
 
-# Copy custom nginx config
+# Copy nginx.conf that already has "listen 8080" — no sed patch needed
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copy built React app
 COPY --from=builder /app/build /usr/share/nginx/html
 
-# Fix ownership so nginx (user 101) can read files
-RUN chown -R nginx:nginx /usr/share/nginx/html && \
-    chmod -R 755 /usr/share/nginx/html
+# Move nginx pid file to /tmp so non-root user can write it
+RUN sed -i 's|/var/run/nginx.pid|/tmp/nginx.pid|g' /etc/nginx/nginx.conf
 
-# Required writable dirs for nginx non-root
-RUN chown -R nginx:nginx /var/cache/nginx /var/log/nginx /var/run && \
-    chmod -R 755 /var/cache/nginx /var/log/nginx
-
-# FIX: Change nginx to listen on unprivileged port 8080
-# so it can run as non-root user
-RUN sed -i 's/listen 80;/listen 8080;/g' /etc/nginx/conf.d/default.conf
+# Fix ownership — nginx user (UID 101) must own all writable paths
+RUN chown -R nginx:nginx \
+        /usr/share/nginx/html \
+        /var/cache/nginx \
+        /var/log/nginx && \
+    chmod -R 755 /var/cache/nginx /var/log/nginx /usr/share/nginx/html
 
 USER nginx
 
