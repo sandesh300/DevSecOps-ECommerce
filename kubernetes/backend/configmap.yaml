@@ -6,23 +6,19 @@ metadata:
   labels:
     app: ecommerce-backend
 data:
-  # Spring Boot application properties (non-sensitive)
   SPRING_PROFILES_ACTIVE: "prod"
   SERVER_PORT: "8080"
-  
-  # Database connection (host/port only — credentials come from Secret)
-  SPRING_DATASOURCE_URL: "jdbc:mysql://mysql-svc:3306/ecommerce_db?useSSL=true&requireSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true"
+
+  SPRING_DATASOURCE_URL: "jdbc:mysql://mysql-svc:3306/ecommerce_db?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true"
   SPRING_DATASOURCE_DRIVER_CLASS_NAME: "com.mysql.cj.jdbc.Driver"
-  
-  # JPA / Hibernate
+
   SPRING_JPA_HIBERNATE_DDL_AUTO: "update"
   SPRING_JPA_SHOW_SQL: "false"
-  SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: "org.hibernate.dialect.MySQL8Dialect"
-  
-  # Actuator — expose health only
+
+  SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: "org.hibernate.dialect.MySQLDialect"
+
   MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,prometheus"
   MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: "when_authorized"
-  
-  # Logging
+
   LOGGING_LEVEL_ROOT: "WARN"
   LOGGING_LEVEL_COM_ECOMMERCE: "INFO"
