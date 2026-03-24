@@ -13,7 +13,6 @@ spec:
     matchLabels:
       app: ecommerce-frontend
 
-  # Rolling update — no blue/green complexity
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -30,10 +29,12 @@ spec:
       serviceAccountName: ecommerce-sa
       automountServiceAccountToken: false
 
-      # ── Pod Security Context ──────────────────────────────────────────────────
+      # nginx official image runs as root by default to bind port 80.
+      # Our Dockerfile.frontend switches to port 8080 and USER nginx (uid 101),
+      # so we can enforce non-root here.
       securityContext:
         runAsNonRoot: true
-        runAsUser: 101        # nginxuser UID from Dockerfile
+        runAsUser: 101        # nginx user UID in nginx:alpine image
         runAsGroup: 101
         fsGroup: 101
         seccompProfile:
@@ -41,46 +42,42 @@ spec:
 
       containers:
         - name: ecommerce-frontend
-          # IMAGE_PLACEHOLDER — Jenkins replaces this via sed
           image: sandesh030/ecommerce-frontend:v1.0
           imagePullPolicy: Always
           ports:
-            - containerPort: 80
+            - containerPort: 8080   # matches the sed-patched nginx.conf (listen 8080)
               protocol: TCP
 
-          # ── Container Security Context ────────────────────────────────────────
           securityContext:
             allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: false   # Nginx writes temp/cache files
+            readOnlyRootFilesystem: false   # nginx writes pid/cache files
             runAsNonRoot: true
             runAsUser: 101
             capabilities:
               drop:
                 - ALL
 
-          # ── Resource Limits ───────────────────────────────────────────────────
           resources:
             requests:
               cpu: "100m"
               memory: "128Mi"
             limits:
-              cpu: "250m"
+              cpu: "200m"
               memory: "256Mi"
 
-          # ── Probes ────────────────────────────────────────────────────────────
           readinessProbe:
             httpGet:
               path: /health
-              port: 80
+              port: 8080
             initialDelaySeconds: 10
             periodSeconds: 10
-            timeoutSeconds: 3
+            timeoutSeconds: 5
             failureThreshold: 3
 
           livenessProbe:
             httpGet:
               path: /health
-              port: 80
+              port: 8080
             initialDelaySeconds: 15
             periodSeconds: 30
             timeoutSeconds: 5
