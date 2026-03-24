@@ -10,7 +10,7 @@ customRules:
       condition: >
         spawned_process and
         container and
-        container.image.repository in (sandesh300/ecommerce-backend, sandesh300/ecommerce-frontend) and
+        container.image.repository in (sandesh030/ecommerce-backend, sandesh030/ecommerce-frontend) and
         proc.name in (bash, sh, zsh, dash, ksh)
       output: >
         Shell spawned in ecommerce container
@@ -24,7 +24,7 @@ customRules:
       condition: >
         outbound and
         container and
-        container.image.repository = sandesh300/ecommerce-backend and
+        container.image.repository = sandesh030/ecommerce-backend and
         not fd.sport in (3306, 8080, 53) and
         not fd.sip.name in (mysql-svc, localhost)
       output: >
@@ -40,7 +40,7 @@ customRules:
         open_read and
         container and
         fd.name in (/etc/shadow, /etc/sudoers, /root/.ssh/id_rsa, /proc/self/environ) and
-        container.image.repository in (sandesh300/ecommerce-backend, sandesh300/ecommerce-frontend)
+        container.image.repository in (sandesh030/ecommerce-backend, sandesh030/ecommerce-frontend)
       output: >
         Sensitive file read in container
         (file=%fd.name user=%user.name container=%container.name image=%container.image.repository)
@@ -53,7 +53,7 @@ customRules:
       condition: >
         spawned_process and
         container and
-        container.image.repository in (sandesh300/ecommerce-backend, sandesh300/ecommerce-frontend) and
+        container.image.repository in (sandesh030/ecommerce-backend, sandesh030/ecommerce-frontend) and
         proc.is_suid_binary = true
       output: >
         Privilege escalation via SUID binary
@@ -67,7 +67,7 @@ customRules:
       condition: >
         open_write and
         container and
-        container.image.repository = sandesh300/ecommerce-frontend and
+        container.image.repository = sandesh030/ecommerce-frontend and
         not fd.name startswith /tmp and
         not fd.name startswith /var/cache/nginx and
         not fd.name startswith /var/log/nginx and

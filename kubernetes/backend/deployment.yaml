@@ -69,7 +69,7 @@ spec:
       containers:
         - name: ecommerce-backend
           # IMAGE_PLACEHOLDER — Jenkins will replace this via sed
-          image: sandesh300/ecommerce-backend:v1.0
+          image: sandesh030/ecommerce-backend:v1.0
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
