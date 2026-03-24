@@ -1,48 +1,43 @@
-# ── Stage 1: Build React ───────────────────────────────────────────────────────
+# ── Stage 1: Build React App ────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files first for layer caching
 COPY package*.json ./
-
-# Use ci for reproducible installs; audit for security awareness
-RUN npm ci --audit
+RUN npm ci --only=production=false
 
 COPY . .
-
-# Production build
 RUN npm run build
 
-# ── Stage 2: Serve with hardened Nginx ─────────────────────────────────────────
+# ── Stage 2: Serve with hardened Nginx ──────────────────────────────────────
 FROM nginx:1.25-alpine AS runtime
 
-# Install security updates
-RUN apk update && apk upgrade --no-cache && \
-    rm -rf /var/cache/apk/*
+# Remove default nginx config
+RUN rm /etc/nginx/conf.d/default.conf
 
-# Remove default nginx content and configs
-RUN rm -rf /usr/share/nginx/html/* /etc/nginx/conf.d/*
+# Copy custom nginx config
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copy built React app
 COPY --from=builder /app/build /usr/share/nginx/html
 
-# Copy hardened nginx config
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Fix ownership so nginx (user 101) can read files
+RUN chown -R nginx:nginx /usr/share/nginx/html && \
+    chmod -R 755 /usr/share/nginx/html
 
-# Create non-root user for nginx
-RUN addgroup -S nginxgroup && adduser -S nginxuser -G nginxgroup && \
-    chown -R nginxuser:nginxgroup /usr/share/nginx/html && \
-    chown -R nginxuser:nginxgroup /var/cache/nginx && \
-    chown -R nginxuser:nginxgroup /var/log/nginx && \
-    touch /var/run/nginx.pid && \
-    chown nginxuser:nginxgroup /var/run/nginx.pid
+# Required writable dirs for nginx non-root
+RUN chown -R nginx:nginx /var/cache/nginx /var/log/nginx /var/run && \
+    chmod -R 755 /var/cache/nginx /var/log/nginx
 
-USER nginxuser
+# FIX: Change nginx to listen on unprivileged port 8080
+# so it can run as non-root user
+RUN sed -i 's/listen 80;/listen 8080;/g' /etc/nginx/conf.d/default.conf
 
-EXPOSE 80
+USER nginx
 
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:80/ || exit 1
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]
