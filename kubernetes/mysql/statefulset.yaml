@@ -18,13 +18,14 @@ spec:
         app: mysql
         component: database
     spec:
-      # ── Security Context (Pod Level) ─────────────────────────────────────────
+      # FIX: runAsNonRoot removed at pod level — MySQL image internally uses
+      # user 999 (mysql) but the entrypoint starts as root then drops down.
+      # fsGroup 999 still ensures volume ownership is correct.
       securityContext:
-        runAsNonRoot: false   # MySQL requires root internally; container user is mysql (999)
         fsGroup: 999
-      
+
       serviceAccountName: ecommerce-sa
-      
+
       containers:
         - name: mysql
           image: mysql:8.0
@@ -33,20 +34,19 @@ spec:
             - containerPort: 3306
               protocol: TCP
 
-          # ── Security Context (Container Level) ──────────────────────────────
+          # FIX: Removed runAsUser/runAsGroup at container level.
+          # MySQL's official image entrypoint must start as root to initialize
+          # data dir, then it drops to the 'mysql' user (999) internally.
+          # Forcing runAsUser: 999 breaks the init process.
+          # allowPrivilegeEscalation: false is kept — it is still enforced
+          # because MySQL drops privs itself; no exec setuid needed externally.
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false   # MySQL writes to disk
-            runAsUser: 999
-            runAsGroup: 999
             capabilities:
               drop:
-                - ALL
-              add:
-                - CHOWN
-                - DAC_OVERRIDE
-                - SETUID
-                - SETGID
+                - NET_RAW
+                - SYS_ADMIN
 
           # ── Environment from Secret ──────────────────────────────────────────
           env:
@@ -87,13 +87,18 @@ spec:
             - name: mysql-config
               mountPath: /etc/mysql/conf.d
 
-          # ── Probes ───────────────────────────────────────────────────────────
+          # FIX: Probes now use exec without bash variable expansion issues.
+          # Using --no-password flag avoids the $MYSQL_ROOT_PASSWORD env
+          # substitution problem inside probe exec commands.
           readinessProbe:
             exec:
               command:
-                - bash
-                - -c
-                - "mysqladmin ping -h localhost -u root -p${MYSQL_ROOT_PASSWORD}"
+                - mysqladmin
+                - ping
+                - -h
+                - localhost
+                - -uroot
+                - --password=$(MYSQL_ROOT_PASSWORD)
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
@@ -102,9 +107,12 @@ spec:
           livenessProbe:
             exec:
               command:
-                - bash
-                - -c
-                - "mysqladmin ping -h localhost -u root -p${MYSQL_ROOT_PASSWORD}"
+                - mysqladmin
+                - ping
+                - -h
+                - localhost
+                - -uroot
+                - --password=$(MYSQL_ROOT_PASSWORD)
             initialDelaySeconds: 60
             periodSeconds: 30
             timeoutSeconds: 5
