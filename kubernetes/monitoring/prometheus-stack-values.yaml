@@ -36,7 +36,7 @@ prometheus:
   # Expose via NodePort for Minikube access
   service:
     type: NodePort
-    nodePort: 30090
+    nodePort: 30091
 
 # ── Grafana ─────────────────────────────────────────────────────────────────
 grafana:
