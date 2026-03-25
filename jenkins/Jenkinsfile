@@ -242,90 +242,90 @@ pipeline {
       }
     }
 
-  //   // ── 13. Deploy to Minikube ────────────────────────────────────────────────
-  //   stage('Deploy to Minikube') {
-  //     steps {
-  //       sh """
-  //         echo "=== Verifying Minikube cluster access ==="
-  //         kubectl --kubeconfig=${KUBECONFIG} cluster-info
+    // // ── 13. Deploy to Minikube ────────────────────────────────────────────────
+    // stage('Deploy to Minikube') {
+    //   steps {
+    //     sh """
+    //       echo "=== Verifying Minikube cluster access ==="
+    //       kubectl --kubeconfig=${KUBECONFIG} cluster-info
 
-  //         echo "=== Applying namespace and RBAC ==="
-  //         kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/namespace.yaml
-  //         kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/rbac/rbac.yaml
+    //       echo "=== Applying namespace and RBAC ==="
+    //       kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/namespace.yaml
+    //       kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/rbac/rbac.yaml
 
-  //         echo "=== Applying MySQL resources ==="
-  //         kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/mysql/secret.yaml
-  //         kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/mysql/pvc.yaml
-  //         kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/mysql/statefulset.yaml
-  //         kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/mysql/service.yaml
+    //       echo "=== Applying MySQL resources ==="
+    //       kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/mysql/secret.yaml
+    //       kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/mysql/pvc.yaml
+    //       kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/mysql/statefulset.yaml
+    //       kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/mysql/service.yaml
 
-  //         echo "=== Waiting for MySQL to be ready ==="
-  //         kubectl --kubeconfig=${KUBECONFIG} rollout status statefulset/mysql \
-  //           -n ${K8S_NAMESPACE} --timeout=120s
+    //       echo "=== Waiting for MySQL to be ready ==="
+    //       kubectl --kubeconfig=${KUBECONFIG} rollout status statefulset/mysql \
+    //         -n ${K8S_NAMESPACE} --timeout=120s
 
-  //         echo "=== Applying Backend resources ==="
-  //         kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/backend/configmap.yaml
-  //         kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/backend/deployment.yaml
-  //         kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/backend/service.yaml
+    //       echo "=== Applying Backend resources ==="
+    //       kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/backend/configmap.yaml
+    //       kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/backend/deployment.yaml
+    //       kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/backend/service.yaml
 
-  //         echo "=== Applying Frontend resources ==="
-  //         kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/frontend/deployment.yaml
-  //         kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/frontend/service-ingress.yaml
+    //       echo "=== Applying Frontend resources ==="
+    //       kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/frontend/deployment.yaml
+    //       kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/frontend/service-ingress.yaml
 
-  //         echo "=== Applying NetworkPolicies ==="
-  //         kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/network-policy/networkpolicy.yaml
+    //       echo "=== Applying NetworkPolicies ==="
+    //       kubectl --kubeconfig=${KUBECONFIG} apply -f kubernetes/network-policy/networkpolicy.yaml
 
-  //         echo "=== Rolling out updated images ==="
-  //         kubectl --kubeconfig=${KUBECONFIG} set image deployment/ecommerce-backend \
-  //           ecommerce-backend=${DOCKER_HUB_USER}/${BACKEND_IMAGE}:${params.IMAGE_TAG} \
-  //           -n ${K8S_NAMESPACE}
+    //       echo "=== Rolling out updated images ==="
+    //       kubectl --kubeconfig=${KUBECONFIG} set image deployment/ecommerce-backend \
+    //         ecommerce-backend=${DOCKER_HUB_USER}/${BACKEND_IMAGE}:${params.IMAGE_TAG} \
+    //         -n ${K8S_NAMESPACE}
 
-  //         kubectl --kubeconfig=${KUBECONFIG} set image deployment/ecommerce-frontend \
-  //           ecommerce-frontend=${DOCKER_HUB_USER}/${FRONTEND_IMAGE}:${params.IMAGE_TAG} \
-  //           -n ${K8S_NAMESPACE}
+    //       kubectl --kubeconfig=${KUBECONFIG} set image deployment/ecommerce-frontend \
+    //         ecommerce-frontend=${DOCKER_HUB_USER}/${FRONTEND_IMAGE}:${params.IMAGE_TAG} \
+    //         -n ${K8S_NAMESPACE}
 
-  //         echo "=== Waiting for rollouts to complete ==="
-  //         kubectl --kubeconfig=${KUBECONFIG} rollout status deployment/ecommerce-backend \
-  //           -n ${K8S_NAMESPACE} --timeout=120s
+    //       echo "=== Waiting for rollouts to complete ==="
+    //       kubectl --kubeconfig=${KUBECONFIG} rollout status deployment/ecommerce-backend \
+    //         -n ${K8S_NAMESPACE} --timeout=120s
 
-  //         kubectl --kubeconfig=${KUBECONFIG} rollout status deployment/ecommerce-frontend \
-  //           -n ${K8S_NAMESPACE} --timeout=120s
+    //       kubectl --kubeconfig=${KUBECONFIG} rollout status deployment/ecommerce-frontend \
+    //         -n ${K8S_NAMESPACE} --timeout=120s
 
-  //         echo "=== Deployment complete — pod status ==="
-  //         kubectl --kubeconfig=${KUBECONFIG} get pods -n ${K8S_NAMESPACE}
-  //       """
-  //     }
-  //   }
+    //       echo "=== Deployment complete — pod status ==="
+    //       kubectl --kubeconfig=${KUBECONFIG} get pods -n ${K8S_NAMESPACE}
+    //     """
+    //   }
+    // }
 
-  //   // ── 14. Post-deploy Smoke Test ────────────────────────────────────────────
-  //   stage('Smoke Test') {
-  //     steps {
-  //       sh """
-  //         BACKEND_URL=\$(kubectl --kubeconfig=${KUBECONFIG} \
-  //           get svc ecommerce-backend-svc -n ${K8S_NAMESPACE} \
-  //           -o jsonpath='{.spec.clusterIP}')
+    // ── 14. Post-deploy Smoke Test ────────────────────────────────────────────
+    // stage('Smoke Test') {
+    //   steps {
+    //     sh """
+    //       BACKEND_URL=\$(kubectl --kubeconfig=${KUBECONFIG} \
+    //         get svc ecommerce-backend-svc -n ${K8S_NAMESPACE} \
+    //         -o jsonpath='{.spec.clusterIP}')
 
-  //         echo "=== Health check: http://\${BACKEND_URL}:8080/actuator/health ==="
-  //         for i in \$(seq 1 10); do
-  //           STATUS=\$(curl -s -o /dev/null -w "%{http_code}" \
-  //             http://\${BACKEND_URL}:8080/actuator/health || echo "000")
-  //           if [ "\$STATUS" = "200" ]; then
-  //             echo "Backend health check PASSED (attempt \$i)"
-  //             break
-  //           fi
-  //           echo "Attempt \$i: status \$STATUS — retrying in 10s..."
-  //           sleep 10
-  //         done
+    //       echo "=== Health check: http://\${BACKEND_URL}:8080/actuator/health ==="
+    //       for i in \$(seq 1 10); do
+    //         STATUS=\$(curl -s -o /dev/null -w "%{http_code}" \
+    //           http://\${BACKEND_URL}:8080/actuator/health || echo "000")
+    //         if [ "\$STATUS" = "200" ]; then
+    //           echo "Backend health check PASSED (attempt \$i)"
+    //           break
+    //         fi
+    //         echo "Attempt \$i: status \$STATUS — retrying in 10s..."
+    //         sleep 10
+    //       done
 
-  //         if [ "\$STATUS" != "200" ]; then
-  //           echo "Backend health check FAILED after 10 attempts"
-  //           exit 1
-  //         fi
-  //       """
-  //     }
-  //   }
+    //       if [ "\$STATUS" != "200" ]; then
+    //         echo "Backend health check FAILED after 10 attempts"
+    //         exit 1
+    //       fi
+    //     """
+    //   }
+    // }
 
-  // } // end stages
+  } // end stages
 
   post {
     success {
